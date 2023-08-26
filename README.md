@@ -1,2 +1,10 @@
-# SoundEventDetection
-Audio sound event detection package
+# Sound Event Detection
+
+# Installation 
+
+> pip install audio-sed
+
+# Example
+
+
+

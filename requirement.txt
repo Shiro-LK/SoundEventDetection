@@ -1,0 +1,6 @@
+librosa>=0.8.0
+numpy>=1.21.6
+tensorflow>=2.4.1
+torchlibrosa
+tflibrosa
+torch>=2.0
