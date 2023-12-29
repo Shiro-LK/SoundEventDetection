@@ -143,6 +143,12 @@ class AudioSED(nn.Module):
                 with autocast(False):
                     x = self.logmel_extractor(x) # (batch_size, 1, time_steps, mel_bins)
 
+        if self.training and self.spectrogram_augmentation:
+            x = self.spectrogram_augmentation(x)
+
+        # Mixup on spectrogram
+        if self.training and mixup_fn is not None:
+            x = mixup_fn(x)  
 
         # (BS, C=1, H, W)
         frames_num = x.shape[2]   
@@ -150,13 +156,6 @@ class AudioSED(nn.Module):
         x = self.bn(x) # BN applied on melbins
         x = x.transpose(1, 3)
         
-        if self.training and self.spectrogram_augmentation:
-            x = self.spectrogram_augmentation(x)
-        
-        # Mixup on spectrogram
-        if self.training and mixup_fn is not None:
-            x = mixup_fn(x)  
-
         if x.shape[1] == 1:        
             x = torch.cat([x,x,x], dim=1)
         
