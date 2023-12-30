@@ -98,6 +98,6 @@ You can find [here](https://github.com/Shiro-LK/Portfolio-project/tree/main/Bird
 
 # Citation 
 
-- (PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition)[https://arxiv.org/abs/1912.10211]
+- [PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition](https://arxiv.org/abs/1912.10211)
 - PANNs model: https://github.com/qiuqiangkong/audioset_tagging_cnn
 - https://github.com/Shiro-LK/tflibrosa
