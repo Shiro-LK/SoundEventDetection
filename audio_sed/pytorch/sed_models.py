@@ -96,13 +96,14 @@ class AudioClassifierSequenceSED(nn.Module):
         return features
 
 class AudioSED(nn.Module):
-    def __init__(self, backbone, num_classes:list, in_features:int, hidden_size=1024, activation= 'sigmoid', use_logmel=True, 
-                spectrogram_augmentation = None, apply_attention="step", drop_rate = [0.5, 0.5], config_sed:dict = ConfigSED().__dict__):
+    def __init__(self, backbone, num_classes:list, in_features:int, in_channel:int=3, hidden_size=1024, activation= 'sigmoid', use_logmel=True, 
+                spectrogram_augmentation = None, apply_attention="step", drop_rate = [0.5, 0.5], config_sed:dict = ConfigSED().__dict__, wav_2_spectrogram=False):
         """
             Classifier for a new task using pretrained CNN as a sub module.
         """
         super(AudioSED, self).__init__()    
         self.num_classes = num_classes
+        self.in_channel = in_channel
         self.use_logmel = use_logmel
         self.sample_rate = config_sed["sample_rate"]
         self.window_size = config_sed["windows_size"]
@@ -121,27 +122,31 @@ class AudioSED(nn.Module):
         # Spectrogram extractor 
         self.spectrogram_extractor = Spectrogram(n_fft=self.window_size, hop_length=self.hop_size, 
             win_length=self.window_size, window=self.window, center=self.center, pad_mode=self.pad_mode, 
-            freeze_parameters=True)
+            freeze_parameters=True) if wav_2_spectrogram else nn.Identity()
 
         # Logmel feature extractor
         self.logmel_extractor = LogmelFilterBank(sr=self.sample_rate, n_fft=self.window_size, 
             n_mels=self.mel_bins, fmin=self.fmin, fmax=self.fmax, ref=self.ref, amin=self.amin, 
-            top_db=self.top_db, freeze_parameters=True)
+            top_db=self.top_db, freeze_parameters=True) if  wav_2_spectrogram else nn.Identity()
 
         self.backbone =  backbone 
    
         self.sed_block = SED_Block(num_classes=num_classes, in_features=in_features, hidden_size=hidden_size, 
                 activation = activation, drop_rate = drop_rate,   apply_attention=apply_attention)
-                
+        self.wav_2_spectrogram = wav_2_spectrogram
     def forward(self, input, mixup_fn=None ):
         """Input: (batch_size, length, data_length)
+        # Spectrogram should be: (batch size, c, mel_bins, time_steps)
         """
-        with torch.no_grad():
-            x = self.spectrogram_extractor(input)   # (batch_size, 1, time_steps, freq_bins)
-            #print("sepctrogram :", x.shape)
-            if self.use_logmel:
-                with autocast(False):
-                    x = self.logmel_extractor(x) # (batch_size, 1, time_steps, mel_bins)
+        x = input
+        if self.wav_2_spectrogram:
+            with torch.no_grad():
+                x = self.spectrogram_extractor(x)   # (batch_size, 1, time_steps, freq_bins)
+                #print("sepctrogram :", x.shape)
+                if self.use_logmel:
+                    with autocast(False):
+                        x = self.logmel_extractor(x) # (batch_size, 1, time_steps, mel_bins)
+                x = torch.permute(x, (0,1,3,2))
 
         if self.training and self.spectrogram_augmentation:
             x = self.spectrogram_augmentation(x)
@@ -152,15 +157,18 @@ class AudioSED(nn.Module):
 
         # (BS, C=1, H, W)
         frames_num = x.shape[2]   
-        x = x.transpose(1, 3)
+        x = x.transpose(1, 2)
         x = self.bn(x) # BN applied on melbins
-        x = x.transpose(1, 3)
+        x = x.transpose(1, 2)
         
-        if x.shape[1] == 1:        
-            x = torch.cat([x,x,x], dim=1)
+        if x.shape[1] == 1 and self.in_channel > 1:        
+            x = torch.cat([x for _ in range(self.in_channel)], dim=1)
         
-        x = self.backbone(x) # (batch size, channels, steps, freq)
-        
+        x = self.backbone(x)
+        # (batch size, channels, freq, steps)
+        x = torch.permute(x, (0,1,3,2))
+
+        # (batch size, channels, steps, freq)
         outputs = self.sed_block(x)
 
         return outputs
