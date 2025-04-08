@@ -10,7 +10,7 @@ def readme():
 
 setup(
     name='audio_sed',
-    version='0.0.1',    
+    version='0.0.2',    
     description='Implementation of audio SED architecture for tensorflow and pytorch.',
     author='Shiro-LK',
     author_email='shirosaki94@gmail.com',
