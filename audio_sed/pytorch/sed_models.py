@@ -5,7 +5,7 @@ from torch import nn
 import torch
 from torch.cuda.amp import autocast
 
-def shape_from_backbone(inputs, model, use_logmel=True, config_sed = ConfigSED().__dict__ ):
+def shape_from_backbone(inputs, model, num_channel=3, use_logmel=True, config_sed = ConfigSED().__dict__ ):
     #print(config_sed)
     sample_rate = config_sed["sample_rate"]
     window_size = config_sed["windows_size"]
@@ -31,12 +31,14 @@ def shape_from_backbone(inputs, model, use_logmel=True, config_sed = ConfigSED()
 
     with torch.no_grad():
         x =  spectrogram_extractor(inputs)   # (batch_size, 1, time_steps, freq_bins)
-        print("sepctrogram :", x.shape)
+        print("spectrogram :", x.shape)
         if use_logmel:
             with autocast(False):
                 x =  logmel_extractor(x) # (batch_size, 1, time_steps, mel_bins)
                 print("logmel:", x.shape)
-        x = model(torch.cat([x, x, x], dim=1))
+        if num_channel > 1:
+            x = torch.cat([x for _ in range(num_channel)], dim=1)
+        x = model(x) # (batch_size, channels, freq, steps=mel_bins)
     return x.shape
 
 
@@ -96,7 +98,7 @@ class AudioClassifierSequenceSED(nn.Module):
         return features
 
 class AudioSED(nn.Module):
-    def __init__(self, backbone, num_classes:list, in_features:int, in_channel:int=3, hidden_size=1024, activation= 'sigmoid', use_logmel=True, 
+    def __init__(self, backbone, num_classes:list, in_features:int, in_channel:int=3, hidden_size=1024, use_bn=False, activation= 'sigmoid', use_logmel=True, 
                 spectrogram_augmentation = None, apply_attention="step", drop_rate = [0.5, 0.5], config_sed:dict = ConfigSED().__dict__, wav_2_spectrogram=False):
         """
             Classifier for a new task using pretrained CNN as a sub module.
@@ -118,7 +120,7 @@ class AudioSED(nn.Module):
         self.amin = config_sed["amin"]
         self.top_db = config_sed["top_db"]
         self.spectrogram_augmentation = spectrogram_augmentation
-        self.bn = nn.BatchNorm2d(self.mel_bins)
+        self.bn = nn.BatchNorm2d(self.mel_bins) if use_bn else None
         # Spectrogram extractor 
         self.spectrogram_extractor = Spectrogram(n_fft=self.window_size, hop_length=self.hop_size, 
             win_length=self.window_size, window=self.window, center=self.center, pad_mode=self.pad_mode, 
@@ -146,7 +148,7 @@ class AudioSED(nn.Module):
                 if self.use_logmel:
                     with autocast(False):
                         x = self.logmel_extractor(x) # (batch_size, 1, time_steps, mel_bins)
-                x = torch.permute(x, (0,1,3,2))
+                #x = torch.permute(x, (0,1,3,2))
 
         if self.training and self.spectrogram_augmentation:
             x = self.spectrogram_augmentation(x)
@@ -156,19 +158,22 @@ class AudioSED(nn.Module):
             x = mixup_fn(x)  
 
         # (BS, C=1, H, W)
-        frames_num = x.shape[2]   
-        x = x.transpose(1, 2)
-        x = self.bn(x) # BN applied on melbins
-        x = x.transpose(1, 2)
+        if self.bn is not None:
+   
+            frames_num = x.shape[2]   
+            x = x.transpose(1, 3)
+            x = self.bn(x) # BN applied on melbins
+            x = x.transpose(1, 3)
         
         if x.shape[1] == 1 and self.in_channel > 1:        
             x = torch.cat([x for _ in range(self.in_channel)], dim=1)
         
         x = self.backbone(x)
-        # (batch size, channels, freq, steps)
-        x = torch.permute(x, (0,1,3,2))
+        # (batch size, channels,  steps, freqs)
+        #x = torch.permute(x, (0,1,3,2))
 
         # (batch size, channels, steps, freq)
+    
         outputs = self.sed_block(x)
 
         return outputs
