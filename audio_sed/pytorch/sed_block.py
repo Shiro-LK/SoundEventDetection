@@ -53,6 +53,16 @@ class AttBlock(nn.Module):
             return torch.sigmoid(x)
         elif self.activation == 'softmax':
             return torch.softmax(x, dim=-1)
+        elif self.activation == 'tanh':
+            return torch.tanh(x)
+        elif self.activation == 'relu':
+            return F.relu(x)
+        elif self.activation == 'gelu':
+            return F.gelu(x)   
+        elif self.activation == 'swish':
+            return x * torch.sigmoid(x)
+        elif self.activation == 'elu': 
+            return F.elu(x)
         else:
             raise("Attention Block activation function not accepted. Use only [linear, sigmoid, softmax]")
         
